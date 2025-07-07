@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+*.deb
+langgraph_orchestration.py
+app.old
+Modelfile
+ScoutModelfile
+nano
+.venv
+james-env

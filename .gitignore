@@ -1,0 +1,11 @@
+# Ignore large data folders
+/ollama-data/
+/tts_cache/
+/dev_ollama-data/
+/dev_tts_cache/
+
+# Ignore environment files
+.env
+
+# Ignore SSL keys
+/james-app/ssl/

@@ -1,0 +1,11 @@
+# Ignore everything except these essential files/folders
+*
+!sidecar.py
+!requirements.txt
+!Dockerfile
+!cert.pem
+!key.pem
+!tts_cache/
+!tts_cache/tts_models--en--vctk--vits/
+!tts_cache/tts_models--en--ljspeech--tacotron2-DDC/
+!tts_cache/vocoder_models--en--ljspeech--hifigan_v2/

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>James Agency</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #3c1053; color: white; text-align: center; padding: 2em; }
+    .status { display: inline-block; padding: 0.5em 1em; border-radius: 20px; font-weight: bold; }
+    .status.online { background: #28a745; }
+    .status.turbo-off { background: #dc3545; margin-top: 1em; }
+    #activityStatus { margin-top: 1em; font-size: 0.9em; color: #ffecb3; min-height: 1.2em;}
+    .input-group { margin: 1em auto; max-width: 500px; }
+    input, textarea, button { width: 100%; box-sizing: border-box; margin: 0.5em 0; padding: 0.75em; border: none; border-radius: 5px; font-size: 1em; }
+    button { background: orange; font-weight: bold; cursor: pointer; }
+    #responseBox { background: #ad5389; border-radius: 8px; padding: 1em; margin-top: 1em; min-height: 100px; color: black; max-width: 500px; margin: auto; text-align: left; }
+    .section-title { margin-top: 2em; font-size: 1.2em; font-weight: bold; }
+    .mic-controls { display: flex; gap: 0.5em; justify-content: space-between; }
+    .mic-button, .mute-button, .pause-button { flex: 1; background: #007bff; color: white; }
+    #ttslog { margin: 1em auto 0; max-width: 500px; color: #ffe0b2; font-size: 0.9em; min-height: 1.2em;}
+    
+    /* --- NEW CSS FOR TEXTAREA --- */
+    textarea#mainPrompt {
+      resize: vertical;
+      overflow-y: hidden;
+      line-height: 1.5;
+      font-family: 'Segoe UI', sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <h1>James Agency</h1>
+  <div class="status online">James is online and ready</div>
+  <div class="status turbo-off">Turbo James: Off</div>
+  <div id="activityStatus"></div>
+
+  <div class="input-group">
+    <textarea id="mainPrompt" placeholder="get btc current price james" rows="2"></textarea>
+    <textarea id="contextInput" placeholder="Optional context" rows="3"></textarea>
+    <button onclick="sendPromptWS()">Send</button>
+    <div class="mic-controls">
+      <button class="mic-button" onclick="startVoiceInput()">🎤 Speak</button>
+      <button class="mute-button" onclick="toggleMute()">🔇 Mute</button>
+      <button class="pause-button" onclick="togglePauseOrRead()">⏸️ Pause</button>
+    </div>
+  </div>
+
+  <div id="responseBox">Waiting for response...</div>
+  <div id="ttslog"></div>
+
+  <div class="section-title">📌 Remember Something</div>
+  <div class="input-group">
+    <input id="memoryWhat" type="text" placeholder="What to remember?" />
+    <input id="memoryWho" type="text" placeholder="Who or What?" />
+    <input id="memoryFile" type="file" />
+    <button onclick="sendMemory()">Remember</button>
+  </div>
+
+  <script>
+    let mute = false, paused = false, lastMsg = '', ws, audio = null;
+    const activityStatus = document.getElementById('activityStatus');
+    const pauseBtn = document.querySelector('.pause-button');
+    const ttslog = document.getElementById('ttslog');
+    const r = document.getElementById('responseBox');
+    const mainPrompt = document.getElementById('mainPrompt');
+
+    mainPrompt.addEventListener('input', () => {
+      mainPrompt.style.height = 'auto';
+      mainPrompt.style.height = (mainPrompt.scrollHeight) + 'px';
+    });
+
+    function coquiSpeak(text) {
+        if (mute) { ttslog.textContent = "Muted."; return; }
+        if (!text || !text.trim() || /^[\s.?!,-]*$/.test(text)) {
+            ttslog.textContent = "Skipped empty/non-verbal message.";
+            return;
+        }
+        ttslog.textContent = "Synthesizing speech (Coqui)...";
+        if (audio) { audio.pause(); audio = null; }
+
+        fetch(`/tts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text, speaker_id: 'p236' })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const audioUrl = URL.createObjectURL(blob);
+            audio = new Audio(audioUrl);
+            paused = false;
+            updatePauseBtn();
+            audio.play();
+            ttslog.textContent = "Playing speech.";
+            audio.onended = () => {
+                ttslog.textContent = "Speech finished.";
+                URL.revokeObjectURL(audioUrl);
+            };
+        })
+        .catch(error => {
+            ttslog.textContent = `Coqui error: ${error.message}`;
+            console.error('Coqui TTS Error:', error);
+        });
+    }
+
+    function sendPromptWS() {
+      const p = mainPrompt.value;
+      const c = document.getElementById('contextInput').value;
+      r.textContent = ''; lastMsg = '';
+      activityStatus.textContent = '🕵️ James is analyzing with maximum discretion...';
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onopen = () => ws.send(JSON.stringify({ prompt: p, context: c }));
+      
+      ws.onmessage = e => {
+        if (e.data.startsWith('[Error]')) {
+             r.textContent = e.data;
+             activityStatus.textContent = '⚠️ Server-side error.';
+             ws.close();
+             return;
+        }
+        if (e.data === '[Done]') {
+            let clean = lastMsg.trim();
+            r.textContent = clean;
+            activityStatus.textContent = '✅ Response complete.';
+            coquiSpeak(clean);
+            ws.close();
+        } else {
+            lastMsg += e.data;
+            r.textContent = lastMsg;
+        }
+      };
+
+      ws.onerror = () => activityStatus.textContent = '⚠️ Connection issue.';
+      ws.onclose = () => {
+         if (activityStatus.textContent.includes('analyzing')) {
+             activityStatus.textContent = 'Connection closed.';
+         }
+      };
+    }
+
+    function sendMemory() {
+      const w = document.getElementById('memoryWhat').value;
+      const q = document.getElementById('memoryWho').value;
+      const f = document.getElementById('memoryFile').files[0];
+      const fd = new FormData(); fd.append('what', w); fd.append('who', q);
+      if (f) fd.append('file', f);
+      fetch('/remember', { method: 'POST', body: fd })
+        .then(r => r.json()).then(_ => alert('Saved successfully')).catch(e => alert('Error: ' + e.message));
+    }
+
+    function startVoiceInput() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) return alert('Web Speech API not supported in this browser');
+      const rec = new SpeechRecognition(); rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1;
+      rec.onresult = e => { 
+        const transcript = e.results[0][0].transcript;
+        mainPrompt.value = transcript;
+        mainPrompt.dispatchEvent(new Event('input'));
+        setTimeout(() => sendPromptWS(), 100); 
+      };
+      rec.onerror = e => ttslog.textContent = 'Speech recognition error: ' + e.error;
+      rec.start();
+    }
+
+    function toggleMute() {
+      mute = !mute;
+      document.querySelector('.mute-button').textContent = mute ? '🔈 Unmute' : '🔇 Mute';
+      if (audio) { audio.muted = mute; }
+    }
+
+    function updatePauseBtn() {
+      pauseBtn.textContent = paused ? "▶️ Resume" : "⏸️ Pause";
+    }
+
+    function togglePauseOrRead() {
+      const sel = window.getSelection().toString().trim();
+      if (sel) {
+        coquiSpeak(sel);
+        return;
+      }
+      if (audio) {
+        if (!paused) {
+          audio.pause();
+          paused = true;
+        } else {
+          audio.play();
+          paused = false;
+        }
+        updatePauseBtn();
+      }
+    }
+  </script>
+</body>
+</html>
