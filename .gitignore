@@ -3,9 +3,31 @@
 /tts_cache/
 /dev_ollama-data/
 /dev_tts_cache/
+/james-data/
 
-# Ignore environment files
+# Ignore environment files that may contain secrets
 .env
 
-# Ignore SSL keys
+# Ignore SSL keys and certificates
 /james-app/ssl/
+/poc_coqui_tts/cert.pem
+/poc_coqui_tts/key.pem
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore temporary and backup files
+*.old
+*.maybe
+*.deb
+
+# Ignore misc files created by the user
+CACHED
+[internal]
+layout.txt
+naming
+transferring
+writing
+=
+start-james.sh
