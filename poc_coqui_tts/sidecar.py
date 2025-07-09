@@ -17,18 +17,12 @@ app.add_middleware(
 # Let the TTS library manage model downloads to a persistent volume
 try:
     print("Loading TTS models... This may take a while on first run.")
-    
+
     # VITS model (self-contained)
-    james_tts = TTS(
-        model_name="tts_models/en/vctk/vits", 
-        gpu=False
-    )
-    
+    james_tts = TTS(model_name="tts_models/en/vctk/vits", gpu=False)
+
     # Tacotron2 model (the library will find the default vocoder automatically)
-    julia_tts = TTS(
-        model_name="tts_models/en/ljspeech/tacotron2-DDC",
-        gpu=False
-    )
+    julia_tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", gpu=False)
     startup_error = None
     print("TTS models loaded successfully.")
 
@@ -44,29 +38,36 @@ except Exception as e:
 @app.get("/health")
 async def health():
     if not james_tts or not julia_tts:
-        return JSONResponse(status_code=500, content={
-            "status":"error",
-            "detail": f"TTS models failed to load: {startup_error}"
-        })
-    return {"status":"ok","models":["james","julia"]}
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "detail": f"TTS models failed to load: {startup_error}",
+            },
+        )
+    return {"status": "ok", "models": ["james", "julia"]}
+
 
 @app.post("/tts")
 async def synthesize(request: Request):
     if not james_tts or not julia_tts:
-        return JSONResponse(status_code=500, content={
-            "status":"error",
-            "detail":"TTS models failed to load on startup."
-        })
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "detail": "TTS models failed to load on startup.",
+            },
+        )
     try:
         body = await request.json()
-        text = body.get("text","")
-        speaker = body.get("speaker","james").lower()
+        text = body.get("text", "")
+        speaker = body.get("speaker", "james").lower()
 
         if speaker == "julia":
             wav = julia_tts.tts(text=text)
             rate = julia_tts.synthesizer.output_sample_rate
         else:
-            speaker_id = body.get("speaker_id", "p236") 
+            speaker_id = body.get("speaker_id", "p236")
             wav = james_tts.tts(text=text, speaker=speaker_id)
             rate = james_tts.synthesizer.output_sample_rate
 
@@ -79,7 +80,6 @@ async def synthesize(request: Request):
         print("--- ERROR: Exception during TTS synthesis ---")
         traceback.print_exc()
         print("-------------------------------------------")
-        return JSONResponse(status_code=500, content={
-            "status":"error",
-            "detail": str(e)
-        })
+        return JSONResponse(
+            status_code=500, content={"status": "error", "detail": str(e)}
+        )
